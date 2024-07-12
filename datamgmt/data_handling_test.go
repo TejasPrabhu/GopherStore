@@ -1,4 +1,4 @@
-package p2p
+package datamgmt
 
 import (
     "net"
@@ -12,7 +12,7 @@ func TestCompressionAndEncoding(t *testing.T) {
         defer local.Close() // Close the local connection when done
 
         // Compression and encoding on the local end
-        gzipWriter, encoder := compressAndEncode(local)
+        gzipWriter, encoder := CompressAndEncode(local)
         defer gzipWriter.Close() // Ensure the gzip writer is closed
 
         testData := Data{
@@ -39,7 +39,7 @@ func TestCompressionAndEncoding(t *testing.T) {
     defer remote.Close() // Ensure the remote connection is closed
 
     // Decompression and decoding on the remote end
-    gzipReader, decoder, err := decompressAndDecode(remote)
+    gzipReader, decoder, err := DecompressAndDecode(remote)
     if err != nil {
         t.Errorf("Failed to set up gzip reader: %v", err)
         return
