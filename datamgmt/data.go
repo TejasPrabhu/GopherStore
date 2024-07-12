@@ -1,9 +1,10 @@
-package p2p
+package datamgmt
+
 
 type Data struct {
     ID        string
     Filename  string
-    Content   []byte
     OriginID  string
     Extension string
+    Command string
 }
