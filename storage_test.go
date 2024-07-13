@@ -6,14 +6,14 @@ import (
 	"os"
 	"testing"
 
-	"github.com/tejasprabhu/GopherStore/p2p"
+	"github.com/tejasprabhu/GopherStore/datamgmt"
 )
 
 func TestStorageService(t *testing.T) {
 	service := NewStorageService()
 
 	// Test data to store
-	testData := &p2p.Data{
+	testData := &datamgmt.Data{
 		ID:        "unique-id-1",
 		Filename:  "testfile",
 		Extension: ".txt",

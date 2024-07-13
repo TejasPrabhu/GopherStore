@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/tejasprabhu/GopherStore/p2p"
+	"github.com/tejasprabhu/GopherStore/datamgmt"
 )
 
 const storageRootDir = "data_storage"
@@ -21,14 +21,15 @@ type StorageService struct {
 }
 
 func NewStorageService() *StorageService {
-    root := filepath.Join(os.TempDir(), storageRootDir)
+    // root := filepath.Join(os.TempDir(), storageRootDir)
+    root := storageRootDir
     if err := os.MkdirAll(root, 0755); err != nil {
         log.Fatalf("Unable to create root storage directory: %v", err)
     }
     return &StorageService{rootPath: root}
 }
 
-func (s *StorageService) StoreData(data *p2p.Data, r io.Reader) error {
+func (s *StorageService) StoreData(data *datamgmt.Data, r io.Reader) error {
     s.lock.Lock()
     defer s.lock.Unlock()
 
@@ -50,16 +51,23 @@ func (s *StorageService) StoreData(data *p2p.Data, r io.Reader) error {
     }
     defer file.Close()
 
-    if _, err = io.Copy(file, r); err != nil {
+    // Write directly from the reader to the file
+    written, err := io.Copy(file, r)
+    if err != nil {
         log.Printf("Error writing stream to file: %v", err)
         return err
     }
+    if written == 0 {
+        log.Printf("No data written to file, check stream content.")
+    } else {
+        log.Printf("Data streamed and stored successfully: %s, bytes written: %d", file.Name(), written)
+    }
 
-    log.Printf("Data streamed and stored successfully: %s", file.Name())
     return nil
 }
 
-func (s *StorageService) ReadData(data *p2p.Data) (io.ReadCloser, error) {
+
+func (s *StorageService) ReadData(data *datamgmt.Data) (io.ReadCloser, error) {
     s.lock.Lock()
     defer s.lock.Unlock()
 
@@ -75,7 +83,7 @@ func (s *StorageService) ReadData(data *p2p.Data) (io.ReadCloser, error) {
 }
 
 
-func (s *StorageService) DeleteData(data *p2p.Data) error {
+func (s *StorageService) DeleteData(data *datamgmt.Data) error {
     s.lock.Lock()
     defer s.lock.Unlock()
 
@@ -89,7 +97,7 @@ func (s *StorageService) DeleteData(data *p2p.Data) error {
     return nil
 }
 
-func (s *StorageService) generateFilePath(data *p2p.Data) (string, error) {
+func (s *StorageService) generateFilePath(data *datamgmt.Data) (string, error) {
     hash := sha256.Sum256([]byte(data.ID))
     subfolder := hex.EncodeToString(hash[:3]) // Uses the first 3 bytes of the hash for subfolder
     filename := fmt.Sprintf("%s%s", data.Filename, data.Extension)
