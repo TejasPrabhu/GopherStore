@@ -47,7 +47,7 @@ jobs:
     - name: Run Go Report Card
       run: |
         go install github.com/gojp/goreportcard/cmd/goreportcard-cli@latest
-        goreportcard-cli -v -d . -r ./goreportcard-report
+        goreportcard-cli -v -d .
       continue-on-error: true
 
     - name: Run Tests with Coverage
