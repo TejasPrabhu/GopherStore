@@ -1,11 +1,11 @@
 {
-    "go.useLanguageServer": true,
     "go.formatTool": "goimports",
     "go.lintTool": "golangci-lint",
     "go.lintOnSave": "workspace",
     "go.vetOnSave": "workspace",
     // "go.buildOnSave": "workspace",
     "[go]": {
+      "go.useLanguageServer": true,
       "editor.formatOnSave": true,
       "editor.codeActionsOnSave": {
         "source.organizeImports": "always"
