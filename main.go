@@ -97,7 +97,7 @@ func handleFileOperation(operation, destAddr, filePath string) {
     case "send":
         err := sendFile(destAddr, metadata, filePath)
         if err != nil {
-            logger.Log.WithError(err).Errorf("Failed to send %s File")
+            logger.Log.WithError(err).Errorf("Failed to send File")
         } 
     case "fetch", "delete":
         conn, err := server.sendCommand(destAddr, metadata); 
