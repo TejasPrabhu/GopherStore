@@ -4,63 +4,98 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/tejasprabhu/GopherStore/datamgmt"
 )
 
-func TestStorageService(t *testing.T) {
-	service := NewStorageService()
+func TestStorageService_GenerateFilePath(t *testing.T) {
+    service := NewStorageService("test_address")
+    data := &datamgmt.Data{
+        ID:        "1",
+        Filename:  "testfile",
+        Extension: "txt",
+    }
+    expectedPath := filepath.Join(service.rootPath, "6b86b2", "testfile.txt")
+    path, err := service.generateFilePath(data)
+    if err != nil {
+        t.Errorf("GenerateFilePath() error = %v", err)
+    }
+    if path != expectedPath {
+        t.Errorf("Expected %s, got %s", expectedPath, path)
+    }
+}
 
-	// Test data to store
-	testData := &datamgmt.Data{
-		ID:        "unique-id-1",
-		Filename:  "testfile",
-		Extension: ".txt",
-	}
+func TestStorageService_StoreData(t *testing.T) {
+    service := NewStorageService("test_address")
+    defer os.RemoveAll(service.rootPath) // Clean up after test
 
-	// Creating a reader from the byte slice to simulate file content
-	content := bytes.NewReader([]byte("Hello World"))
+    data := &datamgmt.Data{
+        ID:        "1",
+        Filename:  "testfile",
+        Extension: "txt",
+    }
+    content := bytes.NewReader([]byte("Hello, world!"))
 
-	// Store data using reader
-	if err := service.StoreData(testData, content); err != nil {
-		t.Fatalf("StoreData failed: %v", err)
-	}
+    // Test storing data
+    if err := service.StoreData(data, content); err != nil {
+        t.Errorf("StoreData() error = %v", err)
+    }
 
-	// Generate file path to verify file existence
-	path, err := service.generateFilePath(testData)
-	if err != nil {
-		t.Fatalf("generateFilePath failed: %v", err)
-	}
+    // Verify file exists
+    filePath, _ := service.generateFilePath(data)
+    if _, err := os.Stat(filePath); os.IsNotExist(err) {
+        t.Errorf("File does not exist: %s", filePath)
+    }
+}
 
-	// Check if file exists
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		t.Errorf("file %s does not exist", path)
-	}
+func TestStorageService_ReadData(t *testing.T) {
+    service := NewStorageService("test_address")
+    defer os.RemoveAll(service.rootPath) // Clean up after test
 
-	// Read data
-	readCloser, err := service.ReadData(testData)
-	if err != nil {
-		t.Fatalf("ReadData failed: %v", err)
-	}
-	defer readCloser.Close()
+    data := &datamgmt.Data{
+        ID:        "1",
+        Filename:  "testfile",
+        Extension: "txt",
+    }
+    expectedContent := "Hello, world!"
+    content := bytes.NewReader([]byte(expectedContent))
+    service.StoreData(data, content)
 
-	// Compare the content read back from the file
-	readBuffer := new(bytes.Buffer)
-	if _, err := io.Copy(readBuffer, readCloser); err != nil {
-		t.Fatalf("Failed to read data back: %v", err)
-	}
-	if !bytes.Equal(readBuffer.Bytes(), []byte("Hello World")) {
-		t.Errorf("ReadData content mismatch: got %v, want %v", readBuffer.Bytes(), []byte("Hello World"))
-	}
+    // Test reading data
+    reader, err := service.ReadData(data)
+    if err != nil {
+        t.Errorf("ReadData() error = %v", err)
+    }
+    result, _ := io.ReadAll(reader)
+    reader.Close()
 
-	// Delete data
-	if err := service.DeleteData(testData); err != nil {
-		t.Fatalf("DeleteData failed: %v", err)
-	}
+    if string(result) != expectedContent {
+        t.Errorf("Expected %s, got %s", expectedContent, string(result))
+    }
+}
 
-	// Verify deletion
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Errorf("file %s still exists after delete", path)
-	}
+func TestStorageService_DeleteData(t *testing.T) {
+    service := NewStorageService("test_address")
+    defer os.RemoveAll(service.rootPath) // Clean up after test
+
+    data := &datamgmt.Data{
+        ID:        "1",
+        Filename:  "testfile",
+        Extension: "txt",
+    }
+    content := bytes.NewReader([]byte("Hello, world!"))
+    service.StoreData(data, content)
+
+    // Test deleting data
+    if err := service.DeleteData(data); err != nil {
+        t.Errorf("DeleteData() error = %v", err)
+    }
+
+    // Verify file does not exist
+    filePath, _ := service.generateFilePath(data)
+    if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+        t.Errorf("File still exists after delete: %s", filePath)
+    }
 }
