@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/gob"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -111,10 +110,7 @@ func handleFileOperation(operation, destAddr, filePath string) {
 }
 
 func sendFile(destAddr string, metadata *datamgmt.Data, filePath string) error {
-    if strings.Contains(filePath, "..") {
-        return errors.New("invalid file path")
-    }  
-    file, err := os.Open(filePath)
+    file, err := openFile(filePath)
     if err != nil {
         logger.Log.WithError(err).Error("Failed to open file")
         return err

@@ -26,7 +26,6 @@ const storageRootDir = "data_storage"
 // NewStorageService initializes a new storage service with a dedicated storage directory.
 func NewStorageService(address string) *StorageService {
     root := filepath.Join(storageRootDir, address)
-    // root := fmt.Sprintf("%s_%s", storageRootDir, address)
     if err := os.MkdirAll(root, 0740); err != nil {
         logger.Log.WithError(err).Fatal("Unable to create root storage directory")
     }
@@ -49,7 +48,7 @@ func (s *StorageService) StoreData(data *datamgmt.Data, reader io.Reader) error 
         return err
     }
 
-    file, err := os.Create(path)
+    file, err := createFile(path)
     if err != nil {
         logger.Log.WithError(err).Error("Error creating file")
         return err
@@ -79,11 +78,7 @@ func (s *StorageService) ReadData(data *datamgmt.Data) (io.ReadCloser, error) {
         return nil, err
     }
 
-    if strings.Contains(path, "..") {
-        return nil, errors.New("invalid file path")
-    }  
-
-    file, err := os.Open(path)
+    file, err := openFile(path)
     if err != nil {
         logger.Log.WithError(err).Error("Error opening data file")
         return nil, err
@@ -119,4 +114,39 @@ func (s *StorageService) generateFilePath(data *datamgmt.Data) (string, error) {
     subfolder := hex.EncodeToString(hash[:3]) // Use first 3 bytes of hash for subfolder
     filename := fmt.Sprintf("%s.%s", data.Filename, data.Extension)
     return filepath.Join(s.rootPath, subfolder, filename), nil
+}
+
+
+func sanitizeFilePath(filePath string) (string, error) {
+    cleanPath := filepath.Clean(filePath)
+    if strings.Contains(cleanPath, "..") || filepath.IsAbs(cleanPath) {
+        return "", errors.New("invalid file path")
+    }
+    return cleanPath, nil
+}
+
+func openFile(filePath string) (*os.File, error) {
+    cleanPath, err := sanitizeFilePath(filePath)
+    if err != nil {
+        return nil, err
+    }
+    file, err := os.Open(cleanPath)
+    if err != nil {
+        logger.Log.WithError(err).Error("Failed to open file")
+        return nil, err
+    }
+    return file, nil
+}
+
+func createFile(filePath string) (*os.File, error) {
+    cleanPath, err := sanitizeFilePath(filePath)
+    if err != nil {
+        return nil, err
+    }
+    file, err := os.Create(cleanPath)
+    if err != nil {
+        logger.Log.WithError(err).Error("Failed to create file")
+        return nil, err
+    }
+    return file, nil
 }
