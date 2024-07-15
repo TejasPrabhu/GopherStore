@@ -1,8 +1,8 @@
 build:
-	@go build -o bin/fs
+	@go build -o bin/GopherStore
 
 run: build
-	@./bin/fs
+	@./bin/GopherStore
 
 test:
 	@go test ./... -v
