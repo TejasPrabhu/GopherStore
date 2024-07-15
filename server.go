@@ -1,305 +1,265 @@
 package main
 
 import (
-	// "bufio"
-	"bytes"
-	"encoding/gob"
-	"io"
-	"log"
-	"net"
-	// "strings"
-	"sync"
+    "bytes"
+    "encoding/gob"
+    "io"
+    "net"
+    "sync"
 
-	"github.com/tejasprabhu/GopherStore/datamgmt"
-	"github.com/tejasprabhu/GopherStore/p2p"
+    "github.com/tejasprabhu/GopherStore/datamgmt"
+    "github.com/tejasprabhu/GopherStore/logger"
+    "github.com/tejasprabhu/GopherStore/p2p"
 )
 
-// Server encapsulates the TCP transport, storage handling, and peer management.
 type Server struct {
-	transport *p2p.TCPTransport
-	storage   *StorageService
-	wg        sync.WaitGroup
-	quit      chan struct{}
+    transport *p2p.TCPTransport
+    storage   *StorageService
+    wg        sync.WaitGroup
+    quit      chan struct{}
 }
 
-// NewServer creates a new server with the specified TCP address.
 func NewServer(address string) *Server {
-	storageService := NewStorageService(address)
-	transport := p2p.NewTCPTransport(address)
-	return &Server{
-		transport: transport,
-		storage:   storageService,
-		quit:      make(chan struct{}),
-	}
+    storageService := NewStorageService(address)
+    transport := p2p.NewTCPTransport(address)
+    return &Server{
+        transport: transport,
+        storage:   storageService,
+        quit:      make(chan struct{}),
+    }
 }
 
-// Start initiates the server to accept incoming TCP connections and process them.
 func (s *Server) Start() error {
-	log.Println("Server starting...")
-	if err := s.transport.Listen(); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
-		return err
-	}
-	s.wg.Add(1)
-	go s.handleConnections()
-	return nil
+    logger.Log.Info("Server starting...")
+    if err := s.transport.Listen(); err != nil {
+        logger.Log.WithError(err).Fatal("Failed to start server")
+        return err
+    }
+    s.wg.Add(1)
+    go s.handleConnections()
+    return nil
 }
 
 func (s *Server) Shutdown() {
-    close(s.quit)  // Signal all goroutines to stop
-    s.transport.Close()  // Close the listener
-    s.wg.Wait()  // Wait for all connections to be closed gracefully
-    log.Println("Server shut down.")
+    close(s.quit)
+    s.transport.Close()
+    s.wg.Wait()
+    logger.Log.Info("Server shut down.")
 }
 
-
-// handleConnections listens for new connections and processes them concurrently.
 func (s *Server) handleConnections() {
-	for {
-		select {
-		case <-s.quit:
-			return
-		case conn, ok := <-s.transport.ConnectionsCh:
-			if !ok {
-				return // Channel closed
-			}
-			s.wg.Add(1)
-			go s.handleConnection(conn)
-		}
-	}
+    for {
+        select {
+        case <-s.quit:
+            return
+        case conn, ok := <-s.transport.ConnectionsCh:
+            if !ok {
+                return
+            }
+            s.wg.Add(1)
+            go s.handleConnection(conn)
+        }
+    }
 }
 
+func (s *Server) handleConnection(conn net.Conn) {
+    logger.Log.WithField("address", conn.RemoteAddr().String()).Info("Handling connection")
+    defer conn.Close()
+    adapter, err := datamgmt.NewReadStreamAdapter(conn)
+    if err != nil {
+        logger.Log.WithError(err).Error("Failed to create stream adapter")
+        return
+    }
+    defer adapter.Close()
 
+    for {
+        metadata, err := datamgmt.ReadLengthPrefixedData(adapter.GzipReader)
+        if err != nil {
+            if err == io.EOF {
+                logger.Log.Info("EOF reached, closing connection")
+                break
+            } else {
+                logger.Log.WithError(err).Error("Error reading metadata")
+                continue
+            }
+        }
 
+        var data datamgmt.Data
+        if err := gob.NewDecoder(bytes.NewReader(metadata)).Decode(&data); err != nil {
+            logger.Log.WithError(err).Error("Error decoding metadata")
+            continue
+        }
 
-// storeData handles storing data received from the network.
-func (s *Server) storeData(data *datamgmt.Data, r io.Reader) {
-	if err := s.storage.StoreData(data, r); err != nil {
-		log.Printf("Error storing data: %v", err)
-	}
+        logger.Log.WithFields(map[string]interface{}{
+            "command": data.Command, 
+            "filename": data.Filename,
+        }).Info("Received command")
+
+        switch data.Command {
+        case "send":
+            s.handleStoreCommand(&data, adapter)
+        case "fetch":
+            s.fetchData(&data, conn)
+        case "delete":
+            s.deleteData(&data)
+        default:
+            logger.Log.WithField("command", data.Command).Warn("Invalid command received")
+        }
+    }
+}
+
+func (s *Server) handleStoreCommand(data *datamgmt.Data, adapter *datamgmt.StreamAdapter) {
+    content, err := datamgmt.ReadLengthPrefixedData(adapter.GzipReader)
+    if err != nil {
+        logger.Log.WithError(err).Error("Failed to read data content")
+        return
+    }
+    byteContent := bytes.NewReader(content)
+    if err := s.storage.StoreData(data, byteContent); err != nil {
+        logger.Log.WithError(err).Error("Failed to store data")
+    }
 }
 
 func (s *Server) fetchData(data *datamgmt.Data, conn net.Conn) {
     reader, err := s.storage.ReadData(data)
     if err != nil {
-        log.Printf("Error reading data: %v", err)
-        conn.Close() // Ensure to close the connection on error
+        logger.Log.WithError(err).Error("Failed to read data")
+        conn.Close()
         return
-    } else {
-        log.Println("data read successfully")
     }
     defer reader.Close()
 
     adapter, err := datamgmt.NewWriteStreamAdapter(conn)
     if err != nil {
-        log.Printf("Failed to create write stream adapter: %v", err)
-        conn.Close() // Ensure to close the connection on error
+        logger.Log.WithError(err).Error("Failed to create write stream adapter")
+        conn.Close()
         return
-    } else {
-        log.Println("write adapter inside fetcData created")
     }
     defer adapter.Close()
 
-    if err := sendDataToClient(adapter, data, reader); err != nil {
-        log.Printf("Failed to send data: %v", err)
-        conn.Close() // Ensure to close the connection on error
-    } else {
-        log.Println("Data sent successfully, closing connection.")
+    if err := s.sendDataToClient(adapter, data, reader); err != nil {
+        logger.Log.WithError(err).Error("Failed to send data")
+        conn.Close()
     }
-
 }
 
+func (s *Server) deleteData(data *datamgmt.Data) {
+    if err := s.storage.DeleteData(data); err != nil {
+        logger.Log.WithError(err).Error("Failed to delete data")
+    }
+}
 
-func sendDataToClient(adapter *datamgmt.StreamAdapter, data *datamgmt.Data, reader io.Reader) error {
+func (s *Server) sendDataToClient(adapter *datamgmt.StreamAdapter, data *datamgmt.Data, reader io.Reader) error {
+    logger.Log.Info("Sending data to client")
     data.Command = "download"
     metadataBuffer := bytes.Buffer{}
     if err := gob.NewEncoder(&metadataBuffer).Encode(data); err != nil {
+        logger.Log.WithError(err).Error("Failed to encode data")
         return err
-    } else {
-        log.Println("encoder created inside fetcData created")
     }
 
-
-    // Send metadata
     if err := datamgmt.SendLengthPrefixedData(adapter.GzipWriter, metadataBuffer.Bytes()); err != nil {
+        logger.Log.WithError(err).Error("Failed to send metadata")
         return err
-    } else {
-        log.Println("metadata")
     }
 
-    // Send metadata
     if err := datamgmt.SendStreamWithSizePrefix(adapter.GzipWriter, reader); err != nil {
+        logger.Log.WithError(err).Error("Failed to send data stream")
         return err
-    } else {
-        log.Println("data sent")
     }
 
     if err := adapter.GzipWriter.Flush(); err != nil {
-        log.Printf("Failed to flush data: %v", err)
+        logger.Log.WithError(err).Error("Failed to flush data")
+        return err
     }
 
+    logger.Log.Info("Data sent successfully")
     return nil
 }
 
-
-// deleteData handles deletion of data.
-func (s *Server) deleteData(data *datamgmt.Data) {
-	if err := s.storage.DeleteData(data); err != nil {
-		log.Printf("Error deleting data: %v", err)
-	}
-}
-
-// Stop cleanly shuts down the server.
-func (s *Server) Stop() {
-	close(s.quit)
-	s.transport.Close()
-	s.wg.Wait()
-	log.Println("Server stopped.")
-}
-
+// sendData handles sending data along with metadata to a specified network address.
 func (s *Server) sendData(address string, metadata *datamgmt.Data, dataContent io.Reader) error {
-	conn, err := s.transport.Dial(address)
+    // Establish a network connection to the specified address.
+    conn, err := s.transport.Dial(address)
     if err != nil {
-        log.Printf("Failed to connect to %s: %v", address, err)
+        logger.Log.WithError(err).WithField("address", address).Error("Failed to connect")
         return err
     }
-    defer conn.Close()
-	
-	adapter, err := datamgmt.NewWriteStreamAdapter(conn)
-    if err != nil {
-        log.Printf("Failed to create stream adapter: %v", err)
-        return err
-    }
-    defer adapter.Close()
+    defer conn.Close()  // Ensure the connection is closed after the operation.
 
-    // Serialize metadata to get its size
+    // Create a stream adapter for writing to the network connection.
+    adapter, err := datamgmt.NewWriteStreamAdapter(conn)
+    if err != nil {
+        logger.Log.WithError(err).Error("Failed to create stream adapter")
+        return err
+    }
+    defer adapter.Close()  // Ensure the adapter is closed after the operation.
+
+    // Serialize the metadata into a buffer to determine its size and send it.
     var metadataBuffer bytes.Buffer
     if err := gob.NewEncoder(&metadataBuffer).Encode(metadata); err != nil {
+        logger.Log.WithError(err).Error("Failed to encode metadata")
         return err
     }
 
-    // Send metadata size and metadata
+    // Send the serialized metadata preceded by its length.
     if err := datamgmt.SendLengthPrefixedData(adapter.GzipWriter, metadataBuffer.Bytes()); err != nil {
+        logger.Log.WithError(err).Error("Failed to send metadata")
         return err
     }
 
-    // Send data content size and content
+    // Send the actual data content with a size prefix.
     if err := datamgmt.SendStreamWithSizePrefix(adapter.GzipWriter, dataContent); err != nil {
+        logger.Log.WithError(err).Error("Failed to send data content")
         return err
     }
 
+    // Flush the writer to ensure all data is sent.
     if err := adapter.GzipWriter.Flush(); err != nil {
-        log.Printf("Failed to flush data: %v", err)
+        logger.Log.WithError(err).Error("Failed to flush data")
+        return err
     }
 
+    logger.Log.WithField("address", address).Info("Data sent successfully")
     return nil
 }
 
 func (s *Server) sendCommand(address string, metadata *datamgmt.Data) (net.Conn, error) {
-	conn, err := s.transport.Dial(address)
+    // Attempt to establish a connection to the specified address.
+    conn, err := s.transport.Dial(address)
     if err != nil {
-        log.Printf("Failed to connect to %s: %v", address, err)
+        logger.Log.WithError(err).WithField("address", address).Error("Failed to connect")
         return nil, err
     }
 
-	adapter, err := datamgmt.NewWriteStreamAdapter(conn)
+    // Create a write stream adapter for the connection.
+    adapter, err := datamgmt.NewWriteStreamAdapter(conn)
     if err != nil {
-        log.Printf("Failed to create stream adapter: %v", err)
-        return conn, err
+        logger.Log.WithError(err).Error("Failed to create stream adapter")
+        conn.Close() // Ensure connection is closed on error
+        return nil, err
     }
     defer adapter.Close()
 
-    // Serialize metadata to get its size
+    // Encode the metadata into a buffer to calculate its size.
     var metadataBuffer bytes.Buffer
     if err := gob.NewEncoder(&metadataBuffer).Encode(metadata); err != nil {
-        return conn, err
+        logger.Log.WithError(err).Error("Failed to encode metadata")
+        return nil, err
     }
 
-    // Send metadata size and metadata
+    // Send the metadata with a length prefix.
     if err := datamgmt.SendLengthPrefixedData(adapter.GzipWriter, metadataBuffer.Bytes()); err != nil {
-        return conn, err
+        logger.Log.WithError(err).Error("Failed to send metadata")
+        return nil, err
     }
 
+    // Flush any buffered data to ensure all data is sent.
     if err := adapter.GzipWriter.Flush(); err != nil {
-        log.Printf("Failed to flush data: %v", err)
+        logger.Log.WithError(err).Error("Failed to flush data")
+        return nil, err
     }
 
+    logger.Log.WithField("address", address).Info("Command sent successfully")
     return conn, nil
 }
-
-
-func (s *Server) handleConnection(conn net.Conn) {
-	log.Printf("Handling connection from %s", conn.RemoteAddr().String())
-    defer conn.Close()
-
-	adapter, err := datamgmt.NewReadStreamAdapter(conn)
-	if err != nil {
-		log.Printf("Failed to create stream adapter: %v", err)
-		return
-	} else {
-        log.Printf("adapter created")
-    }
-	defer adapter.Close() // Ensure this is deferred right after successful creation
-
-	for {
-		// Repeatedly read commands until the connection is closed
-        log.Println("Waiting to read data...")
-		metadata, err := datamgmt.ReadLengthPrefixedData(adapter.GzipReader)
-        println(err)
-		if err != nil {
-			if err != io.EOF {
-				log.Printf("Error reading metadata: %v", err)
-			} else {
-                log.Println("EOF reached, closing connection")
-            }
-			break
-		}
-
-		var data datamgmt.Data
-		if err := gob.NewDecoder(bytes.NewReader(metadata)).Decode(&data); err != nil {
-			log.Printf("Error decoding metadata: %v", err)
-			continue
-		}
-
-        log.Printf("Received command: %s, Filename: %s", data.Command, data.Filename)
-
-		switch data.Command {
-		case "store":
-            handleStoreCommand(&data, adapter)
-		case "fetch":
-            s.fetchData(&data, conn)
-		case "delete":
-			s.deleteData(&data)
-		default:
-			log.Printf("Invalid command received: %s", data.Command)
-		}
-	}
-}
-
-
-
-func handleStoreCommand(data *datamgmt.Data, adapter *datamgmt.StreamAdapter) {
-    log.Println("inside handleStorecmd")
-    content, err := datamgmt.ReadLengthPrefixedData(adapter.GzipReader)
-    if err != nil {
-        log.Printf("Error reading data content: %v", err)
-        return
-    }
-    log.Printf("Data read: %v bytes", len(content))
-    byteCOntent := bytes.NewReader(content)
-    log.Println(byteCOntent)
-    server.storeData(data, byteCOntent)
-
-
-}
-
-func handleDeleteCommand(data *datamgmt.Data) {
-	panic("unimplemented")
-}
-
-func handleFetchCommand(data *datamgmt.Data, conn net.Conn) {
-	log.Printf("inside fetch")
-    server.fetchData(data, conn)
-}
-
-

@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -15,236 +14,161 @@ import (
 	"sync"
 
 	"github.com/tejasprabhu/GopherStore/datamgmt"
+	"github.com/tejasprabhu/GopherStore/logger"
 )
 
 var (
-	server      *Server
-	serverMutex sync.Mutex
+    server      *Server
+    serverMutex sync.Mutex
 )
 
 func main() {
-	port := flag.String("port", "3000", "Port to start the server on") // Default port 3000
-	flag.Parse()
+    port := flag.String("port", "3000", "Port to start the server on")
+    flag.Parse()
 
-	startServer(*port) // Automatically start the server at launch
-
-	go handleCommands() // Handle commands in a separate goroutine
-
-	select {} // Block main goroutine to keep the process running
+    startServer(*port)
+    go handleCommands()
+    select {}
 }
 
 func startServer(port string) {
-	serverMutex.Lock()
-	defer serverMutex.Unlock()
+    serverMutex.Lock()
+    defer serverMutex.Unlock()
 
-	if server == nil {
-		server = NewServer(fmt.Sprintf("0.0.0.0:%s", port))
-		go func() {
-			err := server.Start()
-			if err != nil {
-				fmt.Println("Error starting server:", err)
-			}
-		}()
-		fmt.Println("Server started on port", port)
-	} else {
-		fmt.Println("Server already running.")
-	}
+    if server == nil {
+        server = NewServer(fmt.Sprintf("0.0.0.0:%s", port))
+        go func() {
+            if err := server.Start(); err != nil {
+                logger.Log.WithError(err).Error("Error starting server")
+            }
+        }()
+        logger.Log.WithField("port", port).Info("Server started")
+    } else {
+        logger.Log.Warn("Server already running.")
+    }
 }
 
 func handleCommands() {
-	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Println("Server is running. Enter commands:")
-	for scanner.Scan() {
-		input := scanner.Text()
-		go handleCommand(input)
-	}
+    scanner := bufio.NewScanner(os.Stdin)
+    logger.Log.Info("Server is running. Enter commands:")
+    for scanner.Scan() {
+        input := scanner.Text()
+        go handleCommand(input)
+    }
 }
 
 func handleCommand(input string) {
-	parts := strings.Fields(input)
-	if len(parts) == 0 {
-		return
-	}
+    parts := strings.Fields(input)
+    if len(parts) == 0 {
+        return
+    }
 
-	command := parts[0]
-	switch command {
-	case "send":
-		if len(parts) < 3 {
-			fmt.Println("Usage: send <destination IP:port> <file path>")
-			return
-		}
-		sendFile(parts[1], parts[2])
-	case "fetch":
-		if len(parts) < 3 {
-			fmt.Println("Usage: fetch <destination IP:port> <file path>")
-			return
-		}
-		fetchFile(parts[1], parts[2])
-    case "delete":
+    switch command := parts[0]; command {
+    case "send", "fetch", "delete":
         if len(parts) < 3 {
-			fmt.Println("Usage: delete <destination IP:port> <file path>")
-			return
-		}
-		deleteFile(parts[1], parts[2])
-	case "stop":
-		stopServer()
-	default:
-		fmt.Println("Unknown command")
-	}
-}
-
-func sendAck(adapter *datamgmt.StreamAdapter) error {
-    ackMessage := struct {
-        Acknowledged bool
-    }{Acknowledged: true}
-
-    if err := adapter.Encoder.Encode(&ackMessage); err != nil {
-        return err
+            logger.Log.Warnf("Usage: %s <destination IP:port> <file path>", command)
+            return
+        }
+        handleFileOperation(command, parts[1], parts[2])
+    case "stop":
+        stopServer()
+    default:
+        logger.Log.Warn("Unknown command")
     }
-    return nil
 }
 
-func deleteFile(destAddr, filePath string) {
+func handleFileOperation(operation, destAddr, filePath string) {
     if server == nil {
-		fmt.Println("Server is not running.")
-		return
-	}
-	filenameWithExt := filepath.Base(filePath)
-	fileExt := filepath.Ext(filenameWithExt)[1:]
-	
-	fileName := filenameWithExt[:len(filenameWithExt)-len(fileExt)-1]
+        logger.Log.Error("Server is not running.")
+        return
+    }
 
-	fmt.Printf("fileExt : %s", fileExt)
-
-	metadata := &datamgmt.Data{
+    fileName, fileExt := getFileName(filePath)
+    metadata := &datamgmt.Data{
         ID:        "001",
         Filename:  fileName,
-        Command:   "delete",
+        Command:   operation,
         OriginID:  "clientID",
         Extension: fileExt,
-		// server: 
     }
 
-    fmt.Printf("Deleting file %s from %s\n", filePath, destAddr)
-    if _, err := server.sendCommand(destAddr, metadata); err != nil {
-        log.Fatalf("Failed to send command: %v\n", err)
-    }
-}
-
-func fetchFile(destAddr, filePath string) {
-	if server == nil {
-		fmt.Println("Server is not running.")
-		return
-	}
-	filenameWithExt := filepath.Base(filePath)
-	fileExt := filepath.Ext(filenameWithExt)[1:]
-	
-	fileName := filenameWithExt[:len(filenameWithExt)-len(fileExt)-1]
-
-	fmt.Printf("fileExt : %s", fileExt)
-
-	metadata := &datamgmt.Data{
-        ID:        "001",
-        Filename:  fileName,
-        Command:   "fetch",
-        OriginID:  "clientID",
-        Extension: fileExt,
-		// server: 
-    }
-
-	fmt.Printf("Fetching file %s from %s\n", filePath, destAddr)
-   conn, err := server.sendCommand(destAddr, metadata)
-   if err != nil {
-        log.Fatalf("Failed to send data: %v\n", err)
-    }
-
-    processReceivedData(conn)
-
-}
-
-func processReceivedData(conn net.Conn)  {
-	adapter, err := datamgmt.NewReadStreamAdapter(conn)
-	if err != nil {
-		log.Printf("Failed to create stream adapter: %v", err)
-		return
-	} else {
-        log.Printf("client reader adapter created")
-    }
-	defer adapter.Close() // Ensure this is deferred right after successful creation
-
-	for {
-		// Repeatedly read commands until the connection is closed
-        log.Println("Waiting to read data on client...")
-		metadata, err := datamgmt.ReadLengthPrefixedData(adapter.GzipReader)
-        println(err)
+    switch operation {
+    case "send":
+        sendFile(destAddr, metadata, filePath)
+    case "fetch", "delete":
+        conn, err := server.sendCommand(destAddr, metadata); 
 		if err != nil {
-			if err != io.EOF {
-				log.Printf("Error reading metadata: %v", err)
-			} else {
-                log.Println("EOF reached, closing connection")
+            logger.Log.WithError(err).Errorf("Failed to send %s command", operation)
+        } 
+		if operation == "fetch" {
+            processReceivedData(conn)
+        }
+    }
+}
+
+func sendFile(destAddr string, metadata *datamgmt.Data, filePath string) {
+    file, err := os.Open(filePath)
+    if err != nil {
+        logger.Log.WithError(err).Error("Failed to open file")
+        return
+    }
+    defer file.Close()
+
+    if err := server.sendData(destAddr, metadata, file); err != nil {
+        logger.Log.WithError(err).Error("Failed to send data")
+    }
+}
+
+func processReceivedData(conn net.Conn) {
+    adapter, err := datamgmt.NewReadStreamAdapter(conn)
+    if err != nil {
+        logger.Log.WithError(err).Error("Failed to create stream adapter")
+        return
+    }
+    defer adapter.Close() // Ensure this is deferred right after successful creation
+
+    logger.Log.Info("Waiting to read data on client...") // Using Info level for initial waiting message
+    for {
+        metadata, err := datamgmt.ReadLengthPrefixedData(adapter.GzipReader)
+        if err != nil {
+            if err == io.EOF {
+                logger.Log.Info("EOF reached, closing connection")
+                break
+            } else {
+                logger.Log.WithError(err).Error("Error reading metadata")
+                continue
             }
-			break
-		}
+        }
 
-		var data datamgmt.Data
-		if err := gob.NewDecoder(bytes.NewReader(metadata)).Decode(&data); err != nil {
-			log.Printf("Error decoding metadata: %v", err)
-			continue
-		}
+        var data datamgmt.Data
+        if err := gob.NewDecoder(bytes.NewReader(metadata)).Decode(&data); err != nil {
+            logger.Log.WithError(err).Error("Error decoding metadata")
+            continue
+        }
 
-        log.Printf("Received command: %s, Filename: %s", data.Command, data.Filename)
+        logger.Log.WithFields(map[string]interface{}{
+            "command": data.Command, 
+            "filename": data.Filename,
+        }).Info("Received command")
 
-        handleStoreCommand(&data, adapter)
-
-        // Send acknowledgment to server
-        // fmt.Fprintln(conn, "Data received and processed")
-    
+        // Assuming `handleStoreCommand` is implemented elsewhere and logs its actions
+        server.handleStoreCommand(&data, adapter)
     }
 }
 
 
 func stopServer() {
-	if server != nil {
-		server.Stop()
-		server = nil
-		fmt.Println("Server stopped.")
-	} else {
-		fmt.Println("No server is currently running.")
-	}
-}
-
-
-func sendFile(destAddr, filePath string) {
-	if server == nil {
-		fmt.Println("Server is not running.")
-		return
-	}
-	fmt.Printf("Sending file %s to %s\n", filePath, destAddr)
-    file, err := os.Open(filePath)
-    if err != nil {
-        log.Fatalf("Failed to open file: %v\n", err)
-        return
-    }
-    defer file.Close()
-
-	fileName, extension := getFileName(filePath)
-
-    metadata := &datamgmt.Data{
-        ID:        "001",
-        Filename:  fileName,
-        Command:   "store",
-        OriginID:  "clientID",
-        Extension: extension,
-    }
-
-    fmt.Printf("Sending file %s to %s\n", filePath, destAddr)
-    if err := server.sendData(destAddr, metadata, file); err != nil {
-        log.Fatalf("Failed to send data: %v\n", err)
+    if server != nil {
+        server.Shutdown()
+        server = nil
+        logger.Log.Info("Server stopped.")
+    } else {
+        logger.Log.Warn("No server is currently running.")
     }
 }
 
 func getFileName(filePath string) (string, string) {
-    parts := strings.Split(filePath, "/")
-    fileName := strings.Split(parts[len(parts)-1], ".")
-    return fileName[0], fileName[1]
+    fileName := filepath.Base(filePath)
+    fileExt := filepath.Ext(fileName)
+    return fileName[:len(fileName)-len(fileExt)], fileExt[1:]
 }

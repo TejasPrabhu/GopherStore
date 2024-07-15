@@ -6,33 +6,35 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"io"
-	"log"
 	"net"
+
+    "github.com/tejasprabhu/GopherStore/logger" 
 )
 
-// StreamAdapter encapsulates the logic for compressing, encoding, and buffering data streams.
+// StreamAdapter encapsulates the logger.Logic for managing data streams with compression and encoding.
 type StreamAdapter struct {
-    Encoder     *gob.Encoder
-    Decoder     *gob.Decoder
-    GzipWriter  *gzip.Writer
-    GzipReader  *gzip.Reader
+    Encoder    *gob.Encoder
+    Decoder    *gob.Decoder
+    GzipWriter *gzip.Writer
+    GzipReader *gzip.Reader
     Buffer      *bytes.Buffer  // Buffer to hold stream data for additional processing
     TeeReader   io.Reader      // TeeReader to read and write to buffer simultaneously
 }
 
-// NewWriteStreamAdapter initializes a stream adapter for writing.
+// NewWriteStreamAdapter creates a new StreamAdapter for writing to a network connection.
 func NewWriteStreamAdapter(conn net.Conn) (*StreamAdapter, error) {
     gzipWriter := gzip.NewWriter(conn)
     return &StreamAdapter{
-        Encoder: gob.NewEncoder(gzipWriter),
+        Encoder:    gob.NewEncoder(gzipWriter),
         GzipWriter: gzipWriter,
     }, nil
 }
 
-// NewReadStreamAdapter initializes a stream adapter for reading, with TeeReader.
+// NewReadStreamAdapter creates a new StreamAdapter for reading from a network connection.
 func NewReadStreamAdapter(conn net.Conn) (*StreamAdapter, error) {
     gzipReader, err := gzip.NewReader(conn)
     if err != nil {
+        logger.Log.WithError(err).Error("Failed to create gzip reader")
         return nil, err
     }
     buffer := new(bytes.Buffer)
@@ -45,54 +47,67 @@ func NewReadStreamAdapter(conn net.Conn) (*StreamAdapter, error) {
     }, nil
 }
 
-// Close closes all resources used by the StreamAdapter.
+// Close ensures all resources are properly released.
 func (adapter *StreamAdapter) Close() error {
     if adapter.GzipWriter != nil {
         if err := adapter.GzipWriter.Close(); err != nil {
+            logger.Log.WithError(err).Error("Failed to close gzip writer")
             return err
         }
     }
     if adapter.GzipReader != nil {
         if err := adapter.GzipReader.Close(); err != nil {
+            logger.Log.WithError(err).Error("Failed to close gzip reader")
             return err
         }
     }
-    log.Println("adapter closed in CLose()")
     return nil
 }
 
-func ReadLengthPrefixedData(reader io.Reader) ([]byte, error) {
-    var length uint32
-    if err := binary.Read(reader, binary.LittleEndian, &length); err != nil {
-        return nil, err
-    }
-    data := make([]byte, length)
-    _, err := io.ReadFull(reader, data)
-    return data, err
-}
-
-
-// Helper to send length-prefixed data
+// SendLengthPrefixedData writes data preceded by its length to the writer.
 func SendLengthPrefixedData(writer io.Writer, data []byte) error {
     length := uint32(len(data))
     if err := binary.Write(writer, binary.LittleEndian, length); err != nil {
+        logger.Log.WithError(err).Error("Failed to write data length")
         return err
     }
-    _, err := writer.Write(data)
-    return err
+    if _, err := writer.Write(data); err != nil {
+        logger.Log.WithError(err).Error("Failed to write data")
+        return err
+    }
+    return nil
 }
 
-// Helper to send stream with size prefix
+// SendStreamWithSizePrefix sends a stream with its size prefixed to the writer.
 func SendStreamWithSizePrefix(writer io.Writer, stream io.Reader) error {
-    buf := new(bytes.Buffer)
-    size, err := io.Copy(buf, stream) // Buffer the stream to calculate size
+    buffer := new(bytes.Buffer)
+    size, err := io.Copy(buffer, stream)
     if err != nil {
+        logger.Log.WithError(err).Error("Failed to buffer stream")
         return err
     }
-
     if err := binary.Write(writer, binary.LittleEndian, uint32(size)); err != nil {
+        logger.Log.WithError(err).Error("Failed to write stream size")
         return err
     }
-    _, err = io.Copy(writer, buf) // Write the buffered content
-    return err
+    if _, err := io.Copy(writer, buffer); err != nil {
+        logger.Log.WithError(err).Error("Failed to write stream")
+        return err
+    }
+    return nil
+}
+
+// ReadLengthPrefixedData reads data from the reader prefixed with its length.
+func ReadLengthPrefixedData(reader io.Reader) ([]byte, error) {
+    var length uint32
+    if err := binary.Read(reader, binary.LittleEndian, &length); err != nil {
+        logger.Log.WithError(err).Error("Failed to read length prefix")
+        return nil, err
+    }
+    data := make([]byte, length)
+    if _, err := io.ReadFull(reader, data); err != nil {
+        logger.Log.WithError(err).Error("Failed to read data")
+        return nil, err
+    }
+    return data, nil
 }
