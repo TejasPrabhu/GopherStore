@@ -20,9 +20,8 @@ type StorageService struct {
     lock     sync.Mutex
 }
 
-func NewStorageService() *StorageService {
-    // root := filepath.Join(os.TempDir(), storageRootDir)
-    root := storageRootDir
+func NewStorageService(address string) *StorageService {
+    root := fmt.Sprintf("%s_%s", storageRootDir, address)
     if err := os.MkdirAll(root, 0755); err != nil {
         log.Fatalf("Unable to create root storage directory: %v", err)
     }
@@ -30,6 +29,7 @@ func NewStorageService() *StorageService {
 }
 
 func (s *StorageService) StoreData(data *datamgmt.Data, r io.Reader) error {
+    log.Println("storing content")
     s.lock.Lock()
     defer s.lock.Unlock()
 
@@ -38,6 +38,8 @@ func (s *StorageService) StoreData(data *datamgmt.Data, r io.Reader) error {
         log.Printf("Error generating file path: %v", err)
         return err
     }
+
+    log.Printf("store path: %s", path)
 
     if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
         log.Printf("Error creating directories for file: %v", err)
@@ -72,6 +74,7 @@ func (s *StorageService) ReadData(data *datamgmt.Data) (io.ReadCloser, error) {
     defer s.lock.Unlock()
 
     path, _ := s.generateFilePath(data)
+    fmt.Println(path)
     file, err := os.Open(path)
     if err != nil {
         log.Printf("Error opening data file: %v", err)
@@ -100,6 +103,6 @@ func (s *StorageService) DeleteData(data *datamgmt.Data) error {
 func (s *StorageService) generateFilePath(data *datamgmt.Data) (string, error) {
     hash := sha256.Sum256([]byte(data.ID))
     subfolder := hex.EncodeToString(hash[:3]) // Uses the first 3 bytes of the hash for subfolder
-    filename := fmt.Sprintf("%s%s", data.Filename, data.Extension)
+    filename := fmt.Sprintf("%s.%s", data.Filename, data.Extension)
     return filepath.Join(s.rootPath, subfolder, filename), nil
 }
