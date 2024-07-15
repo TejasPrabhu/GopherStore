@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"errors"
 	"net"
 	"sync"
 	"time"
@@ -38,15 +39,34 @@ func (t *TCPTransport) Listen() error {
 }
 
 // Accept continuously accepts incoming connections and sends them to the processing channel.
+// func (t *TCPTransport) Accept() {
+// 	for {
+// 		conn, err := t.listener.Accept()
+// 		if err != nil {
+// 			if netErr, ok := err.(net.Error); ok && !netErr.Temporary() {
+// 				logger.Log.WithError(err).Info("Listener closed, stopping accept loop")
+// 				close(t.ConnectionsCh)
+// 				break
+// 			}
+// 			logger.Log.WithError(err).Error("Failed to accept connection")
+// 			continue
+// 		}
+// 		t.ConnectionsCh <- conn // Forward connection to the server for processing
+// 	}
+// 	t.connWG.Wait()
+// }
+
 func (t *TCPTransport) Accept() {
 	for {
 		conn, err := t.listener.Accept()
 		if err != nil {
-			if netErr, ok := err.(net.Error); ok && !netErr.Temporary() {
+			// Handle specific non-recoverable errors
+			if errors.Is(err, net.ErrClosed) {
 				logger.Log.WithError(err).Info("Listener closed, stopping accept loop")
 				close(t.ConnectionsCh)
 				break
 			}
+			// Log the error and continue accepting new connections
 			logger.Log.WithError(err).Error("Failed to accept connection")
 			continue
 		}
@@ -54,6 +74,7 @@ func (t *TCPTransport) Accept() {
 	}
 	t.connWG.Wait()
 }
+
 
 // Close shuts down the TCP listener and waits for all pending operations to complete.
 func (t *TCPTransport) Close() error {

@@ -61,7 +61,9 @@ func TestStorageService_ReadData(t *testing.T) {
     }
     expectedContent := "Hello, world!"
     content := bytes.NewReader([]byte(expectedContent))
-    service.StoreData(data, content)
+    if err := service.StoreData(data, content); err != nil {
+        t.Errorf("StoreData() error = %v", err)
+    }
 
     // Test reading data
     reader, err := service.ReadData(data)
@@ -86,7 +88,9 @@ func TestStorageService_DeleteData(t *testing.T) {
         Extension: "txt",
     }
     content := bytes.NewReader([]byte("Hello, world!"))
-    service.StoreData(data, content)
+    if err := service.StoreData(data, content); err != nil {
+        t.Errorf("StoreData() error = %v", err)
+    }
 
     // Test deleting data
     if err := service.DeleteData(data); err != nil {
