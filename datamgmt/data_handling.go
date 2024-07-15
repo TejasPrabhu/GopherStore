@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"io"
+	"log"
 	"net"
 )
 
@@ -56,6 +57,7 @@ func (adapter *StreamAdapter) Close() error {
             return err
         }
     }
+    log.Println("adapter closed in CLose()")
     return nil
 }
 
