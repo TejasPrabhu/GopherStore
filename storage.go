@@ -1,16 +1,18 @@
 package main
 
 import (
-    "crypto/sha256"
-    "encoding/hex"
-    "fmt"
-    "io"
-    "os"
-    "path/filepath"
-    "sync"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 
-    "github.com/tejasprabhu/GopherStore/datamgmt"
-    "github.com/tejasprabhu/GopherStore/logger" // Assuming logger is set up correctly for structured logging
+	"github.com/tejasprabhu/GopherStore/datamgmt"
+	"github.com/tejasprabhu/GopherStore/logger" // Assuming logger is set up correctly for structured logging
 )
 
 // StorageService handles the storage operations for data objects.
@@ -25,7 +27,7 @@ const storageRootDir = "data_storage"
 func NewStorageService(address string) *StorageService {
     root := filepath.Join(storageRootDir, address)
     // root := fmt.Sprintf("%s_%s", storageRootDir, address)
-    if err := os.MkdirAll(root, 0755); err != nil {
+    if err := os.MkdirAll(root, 0740); err != nil {
         logger.Log.WithError(err).Fatal("Unable to create root storage directory")
     }
     return &StorageService{rootPath: root}
@@ -42,7 +44,7 @@ func (s *StorageService) StoreData(data *datamgmt.Data, reader io.Reader) error 
         return err
     }
 
-    if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+    if err := os.MkdirAll(filepath.Dir(path), 0740); err != nil {
         logger.Log.WithError(err).Error("Error creating directories for file")
         return err
     }
@@ -76,6 +78,10 @@ func (s *StorageService) ReadData(data *datamgmt.Data) (io.ReadCloser, error) {
         logger.Log.WithError(err).Error("Error generating file path")
         return nil, err
     }
+
+    if strings.Contains(path, "..") {
+        return nil, errors.New("invalid file path")
+    }  
 
     file, err := os.Open(path)
     if err != nil {

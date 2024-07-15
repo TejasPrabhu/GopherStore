@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/gob"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -94,7 +95,10 @@ func handleFileOperation(operation, destAddr, filePath string) {
 
     switch operation {
     case "send":
-        sendFile(destAddr, metadata, filePath)
+        err := sendFile(destAddr, metadata, filePath)
+        if err != nil {
+            logger.Log.WithError(err).Errorf("Failed to send %s File")
+        } 
     case "fetch", "delete":
         conn, err := server.sendCommand(destAddr, metadata); 
 		if err != nil {
@@ -106,17 +110,22 @@ func handleFileOperation(operation, destAddr, filePath string) {
     }
 }
 
-func sendFile(destAddr string, metadata *datamgmt.Data, filePath string) {
+func sendFile(destAddr string, metadata *datamgmt.Data, filePath string) error {
+    if strings.Contains(filePath, "..") {
+        return errors.New("invalid file path")
+    }  
     file, err := os.Open(filePath)
     if err != nil {
         logger.Log.WithError(err).Error("Failed to open file")
-        return
+        return err
     }
     defer file.Close()
 
     if err := server.sendData(destAddr, metadata, file); err != nil {
         logger.Log.WithError(err).Error("Failed to send data")
+        return err  
     }
+    return nil
 }
 
 func processReceivedData(conn net.Conn) {
