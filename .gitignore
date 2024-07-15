@@ -27,5 +27,5 @@ go.work.sum
 # User defined
 old
 bin
-roadmap.md
-misc_cmds.txt
+assets
+data_storage_*
