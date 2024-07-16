@@ -44,12 +44,6 @@ jobs:
         gosec ./...
       continue-on-error: true
 
-    - name: Run Go Report Card
-      run: |
-        go install github.com/gojp/goreportcard/cmd/goreportcard-cli@latest
-        goreportcard-cli -v -d .
-      continue-on-error: true
-
     - name: Run Tests with Coverage
       run: |
         go test -v -covermode=count -coverprofile=coverage.out ./...
@@ -60,7 +54,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: coverage-report
-        path: coverage.html
+        path: coverage.out
       continue-on-error: true
 
     - name: Build Executable

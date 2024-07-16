@@ -118,10 +118,15 @@ func (s *StorageService) generateFilePath(data *datamgmt.Data) (string, error) {
 
 
 func sanitizeFilePath(filePath string) (string, error) {
-    cleanPath := filepath.Clean(filePath)
-    if strings.Contains(cleanPath, "..") || filepath.IsAbs(cleanPath) {
-        return "", errors.New("invalid file path")
+    if strings.Contains(filePath, "..") {
+        return "", errors.New("invalid file path: contains '..'")
     }
+
+    cleanPath := filepath.Clean(filePath)
+    if filepath.IsAbs(cleanPath) {
+        return "", errors.New("invalid file path: absolute paths not allowed")
+    }
+
     return cleanPath, nil
 }
 
