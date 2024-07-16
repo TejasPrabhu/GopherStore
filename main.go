@@ -110,7 +110,7 @@ func handleFileOperation(operation, destAddr, filePath string) {
 }
 
 func sendFile(destAddr string, metadata *datamgmt.Data, filePath string) error {
-    file, err := openFile(filePath)
+    file, err := os.Open(filepath.Clean(filePath))
     if err != nil {
         logger.Log.WithError(err).Error("Failed to open file")
         return err

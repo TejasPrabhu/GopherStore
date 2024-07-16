@@ -46,7 +46,7 @@ func (s *StorageService) StoreData(data *datamgmt.Data, reader io.Reader) error 
         return err
     }
 
-    file, err := createFile(path)
+    file, err := os.Create(filepath.Clean(path))
     if err != nil {
         logger.Log.WithError(err).Error("Error creating file")
         return err
@@ -76,7 +76,7 @@ func (s *StorageService) ReadData(data *datamgmt.Data) (io.ReadCloser, error) {
         return nil, err
     }
 
-    file, err := openFile(path)
+    file, err := os.Open(filepath.Clean(path))
     if err != nil {
         logger.Log.WithError(err).Error("Error opening data file")
         return nil, err
@@ -112,44 +112,4 @@ func (s *StorageService) generateFilePath(data *datamgmt.Data) (string, error) {
     subfolder := hex.EncodeToString(hash[:3]) // Use first 3 bytes of hash for subfolder
     filename := fmt.Sprintf("%s.%s", data.Filename, data.Extension)
     return filepath.Join(s.rootPath, subfolder, filename), nil
-}
-
-
-// func sanitizeFilePath(filePath string) (string, error) {
-//     if strings.Contains(filePath, "..") {
-//         return "", errors.New("invalid file path: contains '..'")
-//     }
-
-//     cleanPath := filepath.Clean(filePath)
-//     if filepath.IsAbs(cleanPath) {
-//         return "", errors.New("invalid file path: absolute paths not allowed")
-//     }
-
-//     return cleanPath, nil
-// }
-
-func openFile(filePath string) (*os.File, error) {
-    // cleanPath, err := sanitizeFilePath(filePath)
-    // if err != nil {
-    //     return nil, err
-    // }
-    file, err := os.Open(filepath.Clean(filePath))
-    if err != nil {
-        logger.Log.WithError(err).Error("Failed to open file")
-        return nil, err
-    }
-    return file, nil
-}
-
-func createFile(filePath string) (*os.File, error) {
-    // cleanPath, err := sanitizeFilePath(filePath)
-    // if err != nil {
-    //     return nil, err
-    // }
-    file, err := os.Create(filepath.Clean(filePath))
-    if err != nil {
-        logger.Log.WithError(err).Error("Failed to create file")
-        return nil, err
-    }
-    return file, nil
 }

@@ -19,52 +19,45 @@ jobs:
       with:
         go-version: '1.22'
 
-    - name: Cache Go Modules
-      uses: actions/cache@v3
-      with:
-        path: ~/go/pkg/mod
-        key: ${{ runner.os }}-gomod-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-gomod-
+    # - name: Cache Go Modules
+    #   uses: actions/cache@v3
+    #   with:
+    #     path: ~/go/pkg/mod
+    #     key: ${{ runner.os }}-gomod-${{ hashFiles('**/go.sum') }}
+    #     restore-keys: |
+    #       ${{ runner.os }}-gomod-
 
     - name: Run Go Format
       run: go fmt ./...
-      continue-on-error: true
 
     - name: Run lint
       uses: golangci/golangci-lint-action@v3
       with:
         version: latest
         args: --out-format=colored-line-number
-      continue-on-error: true
 
     - name: Run Security Checks
       run: |
         go install github.com/securego/gosec/v2/cmd/gosec@latest
         gosec ./...
-      continue-on-error: true
 
     - name: Run Tests with Coverage
       run: |
         go test -v -covermode=count -coverprofile=coverage.out ./...
         go tool cover -html=coverage.out -o coverage.html
-      continue-on-error: true
 
     - name: Publish Coverage Results
       uses: actions/upload-artifact@v3
       with:
         name: coverage-report
         path: coverage.out
-      continue-on-error: true
 
     - name: Build Executable
       run: go build -o GopherStore
-      # if: github.ref == 'refs/heads/main'
-      continue-on-error: true
+      if: github.ref == 'refs/heads/main'
 
     - name: Publish Executable
       uses: actions/upload-artifact@v3
       with:
         name: GopherStore-executable
         path: ./GopherStore
-      continue-on-error: true
