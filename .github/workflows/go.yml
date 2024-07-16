@@ -1,0 +1,69 @@
+name: GopherStore CI/CD Workflow
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [ "main", "develop" ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.22'
+
+    # - name: Cache Go Modules
+    #   uses: actions/cache@v3
+    #   with:
+    #     path: ~/go/pkg/mod
+    #     key: ${{ runner.os }}-gomod-${{ hashFiles('**/go.sum') }}
+    #     restore-keys: |
+    #       ${{ runner.os }}-gomod-
+
+    - name: Run Go Format
+      run: go fmt ./...
+
+    - name: Run lint
+      uses: golangci/golangci-lint-action@v3
+      with:
+        version: latest
+        args: --out-format=colored-line-number
+
+    - name: Run Security Checks
+      run: |
+        go install github.com/securego/gosec/v2/cmd/gosec@latest
+        gosec ./...
+
+    - name: Run Tests with Coverage
+      run: |
+        go test -v -covermode=count -coverprofile=coverage.out ./...
+        go tool cover -html=coverage.out -o coverage.html
+
+    - name: Publish Coverage Results
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report
+        path: coverage.out
+
+    - name: Build Executable
+      run: go build -o GopherStore
+      if: github.ref == 'refs/heads/main'
+
+    - name: Publish Executable
+      uses: actions/upload-artifact@v3
+      with:
+        name: GopherStore-executable
+        path: ./GopherStore

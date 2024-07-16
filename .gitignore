@@ -28,4 +28,6 @@ go.work.sum
 old
 bin
 assets
-data_storage_*
+data_storage
+log.*
+

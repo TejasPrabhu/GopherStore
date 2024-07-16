@@ -42,7 +42,9 @@ func (s *Server) Start() error {
 
 func (s *Server) Shutdown() {
     close(s.quit)
-    s.transport.Close()
+    if err :=     s.transport.Close(); err != nil {
+        logger.Log.WithError(err).Error("Failed to close connection")
+    }
     s.wg.Wait()
     logger.Log.Info("Server shut down.")
 }
@@ -124,7 +126,6 @@ func (s *Server) fetchData(data *datamgmt.Data, conn net.Conn) {
     reader, err := s.storage.ReadData(data)
     if err != nil {
         logger.Log.WithError(err).Error("Failed to read data")
-        conn.Close()
         return
     }
     defer reader.Close()
@@ -132,14 +133,12 @@ func (s *Server) fetchData(data *datamgmt.Data, conn net.Conn) {
     adapter, err := datamgmt.NewWriteStreamAdapter(conn)
     if err != nil {
         logger.Log.WithError(err).Error("Failed to create write stream adapter")
-        conn.Close()
         return
     }
     defer adapter.Close()
 
     if err := s.sendDataToClient(adapter, data, reader); err != nil {
         logger.Log.WithError(err).Error("Failed to send data")
-        conn.Close()
     }
 }
 
@@ -236,7 +235,6 @@ func (s *Server) sendCommand(address string, metadata *datamgmt.Data) (net.Conn,
     adapter, err := datamgmt.NewWriteStreamAdapter(conn)
     if err != nil {
         logger.Log.WithError(err).Error("Failed to create stream adapter")
-        conn.Close() // Ensure connection is closed on error
         return nil, err
     }
     defer adapter.Close()

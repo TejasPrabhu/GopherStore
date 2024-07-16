@@ -1,9 +1,11 @@
 package p2p
 
 import (
-	"time"
-	"sync"
 	"log"
+	"sync"
+	"time"
+
+	"github.com/tejasprabhu/GopherStore/logger"
 )
 type Peer struct {
     ID        string
@@ -60,7 +62,9 @@ func tryReconnect(peer *Peer, transport *TCPTransport) bool {
         log.Printf("Failed to reconnect to %s: %v", peer.Address, err)
         return false
     }
-    conn.Close() // Close the connection immediately after checking it's alive
+    if err := conn.Close(); err != nil {
+        logger.Log.WithError(err).Error("Failed to close connection")
+    }
     log.Printf("Successfully reconnected to %s", peer.Address)
     return true
 }

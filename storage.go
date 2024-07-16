@@ -1,16 +1,16 @@
 package main
 
 import (
-    "crypto/sha256"
-    "encoding/hex"
-    "fmt"
-    "io"
-    "os"
-    "path/filepath"
-    "sync"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
 
-    "github.com/tejasprabhu/GopherStore/datamgmt"
-    "github.com/tejasprabhu/GopherStore/logger" // Assuming logger is set up correctly for structured logging
+	"github.com/tejasprabhu/GopherStore/datamgmt"
+	"github.com/tejasprabhu/GopherStore/logger" // Assuming logger is set up correctly for structured logging
 )
 
 // StorageService handles the storage operations for data objects.
@@ -24,8 +24,7 @@ const storageRootDir = "data_storage"
 // NewStorageService initializes a new storage service with a dedicated storage directory.
 func NewStorageService(address string) *StorageService {
     root := filepath.Join(storageRootDir, address)
-    // root := fmt.Sprintf("%s_%s", storageRootDir, address)
-    if err := os.MkdirAll(root, 0755); err != nil {
+    if err := os.MkdirAll(root, 0740); err != nil {
         logger.Log.WithError(err).Fatal("Unable to create root storage directory")
     }
     return &StorageService{rootPath: root}
@@ -42,12 +41,12 @@ func (s *StorageService) StoreData(data *datamgmt.Data, reader io.Reader) error 
         return err
     }
 
-    if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+    if err := os.MkdirAll(filepath.Dir(path), 0740); err != nil {
         logger.Log.WithError(err).Error("Error creating directories for file")
         return err
     }
 
-    file, err := os.Create(path)
+    file, err := os.Create(filepath.Clean(path))
     if err != nil {
         logger.Log.WithError(err).Error("Error creating file")
         return err
@@ -77,7 +76,7 @@ func (s *StorageService) ReadData(data *datamgmt.Data) (io.ReadCloser, error) {
         return nil, err
     }
 
-    file, err := os.Open(path)
+    file, err := os.Open(filepath.Clean(path))
     if err != nil {
         logger.Log.WithError(err).Error("Error opening data file")
         return nil, err
