@@ -1,10 +1,10 @@
 # GopherStore
 
 <div align="center">
-  <img src="./docs/logo.png" alt="GopherStore Logo" width="150">
+  <img src="./docs/logo.png" alt="GopherStore Logo" width="300">
   <br><br>
   <a href="https://github.com/TejasPrabhu/GopherStore/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
-  <a href="https://goreportcard.com/report/github.com/TejasPrabhu/GopherStore"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/TejasPrabhu/GopherStore"></a>
+<!--   <a href="https://goreportcard.com/report/github.com/TejasPrabhu/GopherStore"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/TejasPrabhu/GopherStore"></a> -->
   <a href="https://github.com/TejasPrabhu/GopherStore/actions"><img alt="Build Status" src="https://github.com/TejasPrabhu/GopherStore/actions/workflows/go.yml/badge.svg"></a>
 </div>
 
@@ -72,8 +72,6 @@ Contributions are what make the open-source community such an amazing place to l
 3. Commit your Changes (git commit -m 'Add some AmazingFeature')
 4. Push to the Branch (git push origin feature/AmazingFeature)
 5. Open a Pull Request
-
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](code_of_conduct.md)
 
 ## License
 Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
