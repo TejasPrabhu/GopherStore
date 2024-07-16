@@ -59,7 +59,7 @@ jobs:
 
     - name: Build Executable
       run: go build -o GopherStore
-      if: github.ref == 'refs/heads/main'
+      # if: github.ref == 'refs/heads/main'
       continue-on-error: true
 
     - name: Publish Executable

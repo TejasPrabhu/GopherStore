@@ -117,25 +117,25 @@ func (s *StorageService) generateFilePath(data *datamgmt.Data) (string, error) {
 }
 
 
-func sanitizeFilePath(filePath string) (string, error) {
-    if strings.Contains(filePath, "..") {
-        return "", errors.New("invalid file path: contains '..'")
-    }
+// func sanitizeFilePath(filePath string) (string, error) {
+//     if strings.Contains(filePath, "..") {
+//         return "", errors.New("invalid file path: contains '..'")
+//     }
 
-    cleanPath := filepath.Clean(filePath)
-    if filepath.IsAbs(cleanPath) {
-        return "", errors.New("invalid file path: absolute paths not allowed")
-    }
+//     cleanPath := filepath.Clean(filePath)
+//     if filepath.IsAbs(cleanPath) {
+//         return "", errors.New("invalid file path: absolute paths not allowed")
+//     }
 
-    return cleanPath, nil
-}
+//     return cleanPath, nil
+// }
 
 func openFile(filePath string) (*os.File, error) {
-    cleanPath, err := sanitizeFilePath(filePath)
-    if err != nil {
-        return nil, err
-    }
-    file, err := os.Open(cleanPath)
+    // cleanPath, err := sanitizeFilePath(filePath)
+    // if err != nil {
+    //     return nil, err
+    // }
+    file, err := os.Open(filepath.Clean(filePath))
     if err != nil {
         logger.Log.WithError(err).Error("Failed to open file")
         return nil, err
@@ -144,11 +144,11 @@ func openFile(filePath string) (*os.File, error) {
 }
 
 func createFile(filePath string) (*os.File, error) {
-    cleanPath, err := sanitizeFilePath(filePath)
-    if err != nil {
-        return nil, err
-    }
-    file, err := os.Create(cleanPath)
+    // cleanPath, err := sanitizeFilePath(filePath)
+    // if err != nil {
+    //     return nil, err
+    // }
+    file, err := os.Create(filepath.Clean(filePath))
     if err != nil {
         logger.Log.WithError(err).Error("Failed to create file")
         return nil, err
